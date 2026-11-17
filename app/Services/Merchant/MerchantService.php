@@ -1,0 +1,126 @@
+<?php
+
+namespace App\Services\Merchant;
+
+use App\Models\Profile;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
+
+class MerchantService
+{
+    /**
+     * Get merchant listings with search and filters.
+     *
+     * @param array $filters
+     * @return LengthAwarePaginator
+     */
+    public function getMerchants(array $filters = []): LengthAwarePaginator
+    {
+        $search = trim($filters['search'] ?? '');
+        $location = trim($filters['location'] ?? '');
+        $categoryId = $filters['category_id'] ?? null;
+
+        $query = Profile::query()
+            ->whereHas('user', function (Builder $userQuery) {
+                $userQuery
+                    ->where('role', 'merchant')
+                    ->where('is_active', true);
+            })
+            ->with([
+                'categories' => function ($categoryQuery) {
+                    $categoryQuery
+                        ->where('is_active', true)
+                        ->select([
+                            'id',
+                            'merchant_profile_id',
+                            'name',
+                            'slug',
+                        ]);
+                },
+
+                'menus' => function ($menuQuery) {
+                    $menuQuery->where('is_available', true)
+                        ->select([
+                            'id',
+                            'merchant_profile_id',
+                            'category_id',
+                            'name',
+                            'slug',
+                            'description',
+                            'photo',
+                            'price',
+                            'is_available',
+                        ])
+                        ->orderByRaw('CASE WHEN photo IS NOT NULL THEN 0 ELSE 1 END')
+                        ->latest()
+                        ->limit(3);
+                },
+            ])
+            ->withCount([
+                'categories as active_categories_count' => function (Builder $categoryQuery) {
+                    $categoryQuery->where('is_active', true);
+                },
+                'menus as available_menus_count' => function (Builder $menuQuery) {
+                    $menuQuery
+                        ->where('is_available', true)
+                        ->whereNull('deleted_at');
+                },
+            ]);
+
+        if ($search !== '') {
+            $query->where(function (Builder $searchQuery) use ($search) {
+                $keyword = "%{$search}%";
+
+                $searchQuery
+                    ->where('company_name', 'ilike', $keyword)
+                    ->orWhere('full_name', 'ilike', $keyword)
+                    ->orWhere('description', 'ilike', $keyword)
+                    ->orWhereHas('categories', function (Builder $categoryQuery) use ($keyword) {
+                        $categoryQuery
+                            ->where('is_active', true)
+                            ->where('name', 'ilike', $keyword);
+                    })
+                    ->orWhereHas('menus', function (Builder $menuQuery) use ($keyword) {
+                        $menuQuery
+                            ->where('is_available', true)
+                            ->whereNull('deleted_at')
+                            ->where('name', 'ilike', $keyword);
+                    });
+            });
+        }
+
+        if ($location !== '') {
+            $query->where(function (Builder $locationQuery) use ($location) {
+                $keyword = "%{$location}%";
+
+                $locationQuery
+                    ->where('city', 'ilike', $keyword)
+                    ->orWhere('address', 'ilike', $keyword);
+            });
+        }
+
+        if ($categoryId) {
+            $query->whereHas('categories', function (Builder $categoryQuery) use ($categoryId) {
+                $categoryQuery
+                    ->where('id', $categoryId)
+                    ->where('is_active', true);
+            });
+        }
+
+        $merchants = $query
+            ->orderBy('company_name')
+            ->orderBy('full_name')
+            ->paginate((int) ($filters['per_page'] ?? 12));
+
+        // Generate public photo URL for each menu.
+        $merchants->getCollection()->each(function ($merchant) {
+            $merchant->menus->each(function ($menu) {
+                $menu->photo_url = $menu->photo
+                    ? asset('storage/' . $menu->photo)
+                    : null;
+            });
+        });
+
+        return $merchants;
+    }
+}

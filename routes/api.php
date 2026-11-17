@@ -5,11 +5,14 @@ use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\Category\CategoryController;
 use App\Http\Controllers\Api\V1\Invoice\InvoiceController;
 use App\Http\Controllers\Api\V1\Menu\MenuController;
+use App\Http\Controllers\Api\V1\Merchant\MerchantController;
 use App\Http\Controllers\Api\V1\Order\OrderController;
 use App\Http\Controllers\Api\V1\Profile\ProfileController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
+
+    Route::get('/merchants', [MerchantController::class, 'index']);
 
         /*
         |--------------------------------------------------------------------------
