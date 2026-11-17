@@ -8,6 +8,8 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 
 class MenuService
 {
@@ -66,19 +68,30 @@ class MenuService
     public function createMenu(Profile $profile, array $data): Menu
     {
         return DB::transaction(function () use ($profile, $data): Menu {
+            $photo = $data['photo'] ?? null;
+
+            unset($data['photo']);
+
             $data['slug'] = $this->generateSlug(
                 $profile,
                 $data['name']
             );
 
-            $menu = $profile->menus()->create($data);
+            if ($photo instanceof UploadedFile) {
+                $data['photo'] = $photo->store(
+                    'menus/' . $profile->id,
+                    'public'
+                );
+            }
 
-            return $menu->load('category:id,name,slug');
+            return $profile->menus()
+                ->create($data)
+                ->load('category:id,name,slug');
         });
     }
 
     /**
-     * Update an existing menu.
+     * Update an existing menu and replace its photo when provided.
      *
      * @param Menu $menu
      * @param Profile $profile
@@ -90,8 +103,30 @@ class MenuService
         Profile $profile,
         array $data
     ): Menu {
-        return DB::transaction(function () use ($menu, $profile, $data): Menu {
-            if (isset($data['name']) && $data['name'] !== $menu->name) {
+        $newPhoto = $data['photo'] ?? null;
+        unset($data['photo']);
+
+        $oldPhoto = $menu->photo;
+        $storedPhoto = null;
+
+        try {
+            if ($newPhoto instanceof UploadedFile) {
+                $storedPhoto = $newPhoto->store(
+                    'menus/' . $profile->id,
+                    'public'
+                );
+
+                if ($storedPhoto === false) {
+                    throw new \RuntimeException('Gagal menyimpan foto menu.');
+                }
+
+                $data['photo'] = $storedPhoto;
+            }
+
+            if (
+                isset($data['name'])
+                && $data['name'] !== $menu->name
+            ) {
                 $data['slug'] = $this->generateSlug(
                     $profile,
                     $data['name'],
@@ -99,10 +134,35 @@ class MenuService
                 );
             }
 
-            $menu->update($data);
+            $updatedMenu = DB::transaction(function () use (
+                $menu,
+                $data
+            ): Menu {
+                $menu->update($data);
 
-            return $menu->refresh()->load('category:id,name,slug');
-        });
+                return $menu->refresh()
+                    ->load('category:id,name,slug');
+            });
+
+            // Remove the old photo only after the database transaction succeeds.
+            if (
+                $storedPhoto !== null
+                && $oldPhoto !== null
+                && $oldPhoto !== $storedPhoto
+            ) {
+                Storage::disk('public')->delete($oldPhoto);
+            }
+
+            return $updatedMenu;
+
+        } catch (\Throwable $exception) {
+            // Remove the newly uploaded file if the database update fails.
+            if ($storedPhoto !== null) {
+                Storage::disk('public')->delete($storedPhoto);
+            }
+
+            throw $exception;
+        }
     }
 
     /**
@@ -152,5 +212,26 @@ class MenuService
         }
 
         return $slug;
+    }
+
+    /**
+     * Permanently delete a menu and its associated photo.
+     *
+     * @param Menu $menu
+     * @return bool
+     */
+    public function forceDeleteMenu(Menu $menu): bool
+    {
+        $photo = $menu->photo;
+
+        $deleted = DB::transaction(function () use ($menu): bool {
+            return (bool) $menu->forceDelete();
+        });
+
+        if ($deleted && $photo !== null) {
+            Storage::disk('public')->delete($photo);
+        }
+
+        return $deleted;
     }
 }
