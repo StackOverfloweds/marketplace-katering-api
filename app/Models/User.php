@@ -6,8 +6,9 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
 
-class User extends Authenticatable
+class User extends Authenticatable implements JWTSubject
 {
     use HasUuids, HasFactory;
 
@@ -20,8 +21,14 @@ class User extends Authenticatable
 
     protected $hidden = [
         'password',
+        'remember_token',
     ];
 
+    /**
+     * Define model attribute casting.
+     *
+     * @return array
+     */
     protected function casts(): array
     {
         return [
@@ -30,13 +37,33 @@ class User extends Authenticatable
         ];
     }
 
+    /**
+     * Get the user profile relationship.
+     *
+     * @return HasOne
+     */
     public function profile(): HasOne
     {
         return $this->hasOne(Profile::class);
     }
 
-    public function getAuthIdentifierName(): string
+    /**
+     * Get the identifier used by JWT.
+     *
+     * @return mixed
+     */
+    public function getJWTIdentifier(): mixed
     {
-        return 'username';
+        return $this->getKey();
+    }
+
+    /**
+     * Get custom JWT claims.
+     *
+     * @return array
+     */
+    public function getJWTCustomClaims(): array
+    {
+        return [];
     }
 }
