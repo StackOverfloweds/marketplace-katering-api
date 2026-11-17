@@ -4,6 +4,7 @@
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\Category\CategoryController;
 use App\Http\Controllers\Api\V1\Menu\MenuController;
+use App\Http\Controllers\Api\V1\Order\OrderController;
 use App\Http\Controllers\Api\V1\Profile\ProfileController;
 use Illuminate\Support\Facades\Route;
 
@@ -111,5 +112,32 @@ Route::prefix('v1')->group(function () {
 
             Route::get('/{category}', [CategoryController::class, 'show'])
                 ->whereUuid('category');
+        });
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Order Routes
+        |--------------------------------------------------------------------------
+        */
+
+        Route::prefix('orders')
+        ->middleware(['auth:api', 'active.session'])
+        ->controller(OrderController::class)
+        ->group(function () {
+
+            // Customer and merchant
+            Route::get('/', 'index');
+            Route::get('/{order}', 'show')
+                ->whereUuid('order');
+
+            // Customer
+            Route::post('/', 'store');
+            Route::patch('/{order}/cancel', 'cancel')
+                ->whereUuid('order');
+
+            // Merchant
+            Route::patch('/{order}/status', 'updateStatus')
+                ->whereUuid('order');
         });
 });
