@@ -8,9 +8,13 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
-
+use App\Services\Invoice\InvoiceService;
 class OrderService
 {
+
+    public function __construct(
+        protected InvoiceService $invoiceService
+    ) {}
     /**
      * Create a new order with its order items.
      *
@@ -116,11 +120,14 @@ class OrderService
             ]);
 
             $order->orderItems()->createMany($orderItems);
+            // Generate invoice dalam transaksi checkout yang sama.
+            $this->invoiceService->generate($order);
 
             return $order->load([
                 'customerProfile',
                 'merchantProfile',
                 'orderItems',
+                'invoice',
             ]);
         }, 3);
     }

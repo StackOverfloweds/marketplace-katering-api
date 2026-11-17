@@ -4,63 +4,38 @@ namespace App\Policies;
 
 use App\Models\Invoice;
 use App\Models\User;
-use Illuminate\Auth\Access\Response;
 
 class InvoicePolicy
 {
     /**
-     * Determine whether the user can view any models.
+     * Determine whether the user can view invoices.
      */
     public function viewAny(User $user): bool
     {
-        return false;
+        return $user->is_active
+            && in_array($user->role, ['customer', 'merchant'], true)
+            && $user->profile !== null;
     }
 
     /**
-     * Determine whether the user can view the model.
+     * Determine whether the user can view an invoice.
      */
     public function view(User $user, Invoice $invoice): bool
     {
-        return false;
-    }
+        if (! $user->is_active || ! $user->profile) {
+            return false;
+        }
 
-    /**
-     * Determine whether the user can create models.
-     */
-    public function create(User $user): bool
-    {
-        return false;
-    }
+        $order = $invoice->order;
 
-    /**
-     * Determine whether the user can update the model.
-     */
-    public function update(User $user, Invoice $invoice): bool
-    {
-        return false;
-    }
+        if (! $order) {
+            return false;
+        }
 
-    /**
-     * Determine whether the user can delete the model.
-     */
-    public function delete(User $user, Invoice $invoice): bool
-    {
-        return false;
-    }
-
-    /**
-     * Determine whether the user can restore the model.
-     */
-    public function restore(User $user, Invoice $invoice): bool
-    {
-        return false;
-    }
-
-    /**
-     * Determine whether the user can permanently delete the model.
-     */
-    public function forceDelete(User $user, Invoice $invoice): bool
-    {
-        return false;
+        return match ($user->role) {
+            'customer' => $order->customer_profile_id === $user->profile->id,
+            'merchant' => $order->merchant_profile_id === $user->profile->id,
+            default => false,
+        };
     }
 }
