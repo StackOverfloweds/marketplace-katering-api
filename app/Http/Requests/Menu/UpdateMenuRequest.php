@@ -57,6 +57,12 @@ class UpdateMenuRequest extends FormRequest
                 'sometimes',
                 'boolean',
             ],
+            'photo' => [
+            'nullable',
+            'image',
+            'mimes:jpeg,jpg,png,webp',
+            'max:2048',
+        ],
         ];
     }
 

@@ -38,4 +38,14 @@ class Profile extends Model
     {
         return $this->hasMany(Menu::class, "merchant_profile_id");
     }
+
+    /**
+     * Get all categories owned by this profile.
+     *
+     * @return HasMany
+     */
+    public function categories(): HasMany
+    {
+        return $this->hasMany(Category::class, 'merchant_profile_id');
+    }
 }

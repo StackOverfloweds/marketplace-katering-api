@@ -64,4 +64,14 @@ class Menu extends Model
         return $this->hasMany(OrderItem::class);
     }
 
+    /**
+     * Get all categories belonging to this merchant profile.
+     *
+     * @return HasMany
+     */
+    public function categories(): HasMany
+    {
+        return $this->hasMany(Category::class, 'merchant_profile_id');
+    }
+
 }
