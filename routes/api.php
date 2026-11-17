@@ -2,6 +2,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\Auth\AuthController;
+use App\Http\Controllers\Api\V1\Menu\MenuController;
 use App\Http\Controllers\Api\V1\Profile\ProfileController;
 use Illuminate\Support\Facades\Route;
 
@@ -52,5 +53,35 @@ Route::prefix('v1')->group(function () {
             Route::get('/', 'show');
             Route::patch('/', 'update');
         });
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Public Menu Routes
+            |--------------------------------------------------------------------------
+            */
+        
+            Route::prefix('menus')
+                ->controller(MenuController::class)
+                ->group(function () {
+                    Route::get('/', 'index');
+                    Route::get('/{menu}', 'show');
+                });
+        
+            /*
+            |--------------------------------------------------------------------------
+            | Merchant Menu Management
+            |--------------------------------------------------------------------------
+            */
+        
+            Route::prefix('menus')
+                ->middleware(['auth:api', 'active.session'])
+                ->controller(MenuController::class)
+                ->group(function () {
+                    Route::post('/', 'store');
+                    Route::put('/{menu}', 'update');
+                    Route::patch('/{menu}', 'update');
+                    Route::delete('/{menu}', 'destroy');
+                });
 
 });

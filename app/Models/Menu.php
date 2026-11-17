@@ -31,6 +31,11 @@ class Menu extends Model
         ];
     }
 
+    /**
+     * Get the merchant profile that owns this menu.
+     *
+     * @return BelongsTo
+     */
     public function merchantProfile(): BelongsTo
     {
         return $this->belongsTo(
@@ -39,11 +44,21 @@ class Menu extends Model
         );
     }
 
+    /**
+     * Get the category assigned to this menu.
+     *
+     * @return BelongsTo
+     */
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
     }
 
+    /**
+     * Get all order items associated with this menu.
+     *
+     * @return HasMany
+     */
     public function orderItems(): HasMany
     {
         return $this->hasMany(OrderItem::class);
