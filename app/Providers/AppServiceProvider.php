@@ -10,6 +10,8 @@ use App\Policies\MenuPolicy;
 use App\Policies\OrderPolicy;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use App\Models\Invoice;
+use App\Policies\InvoicePolicy;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -29,5 +31,6 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Category::class, CategoryPolicy::class);
         Gate::policy(Menu::class, MenuPolicy::class);
         Gate::policy(Order::class, OrderPolicy::class);
+        Gate::policy(Invoice::class, InvoicePolicy::class);
     }
 }
