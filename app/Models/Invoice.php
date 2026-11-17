@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Invoice extends Model
 {
     use HasUuids;
-
+    public $timestamps = false;
     protected $fillable = [
         'order_id',
         'invoice_number',
