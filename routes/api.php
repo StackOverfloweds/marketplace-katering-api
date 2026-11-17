@@ -1,31 +1,56 @@
+
 <?php
 
 use App\Http\Controllers\Api\V1\Auth\AuthController;
-use Illuminate\Http\Request;
+use App\Http\Controllers\Api\V1\Profile\ProfileController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/user', function (Request $request) {
-    return $request->user();
-})->middleware('auth:sanctum');
+/*
+|--------------------------------------------------------------------------
+| API Routes
+|--------------------------------------------------------------------------
+|
+| API routes for Marketplace Katering.
+| All routes are prefixed with /api automatically.
+|
+*/
 
-Route::prefix('v1/auth')->group(function () {
+Route::prefix('v1')->group(function () {
 
-    // Public routes
-    Route::post('/register', [AuthController::class, 'register'])
-        ->middleware('throttle:5,1');
+    /*
+    |--------------------------------------------------------------------------
+    | Authentication Routes
+    |--------------------------------------------------------------------------
+    */
 
-    Route::post('/login', [AuthController::class, 'login'])
-        ->middleware('throttle:5,1');
+    Route::prefix('auth')->group(function () {
 
-    // Protected routes
-    Route::middleware(['auth:api', 'active.session'])->group(function () {
+        // Public routes
+        Route::middleware('throttle:5,1')->group(function () {
+            Route::post('/register', [AuthController::class, 'register']);
+            Route::post('/login', [AuthController::class, 'login']);
+        });
 
-        Route::get('/me', [AuthController::class, 'me']);
-
-        Route::post('/logout', [AuthController::class, 'logout']);
-
-        Route::post('/logout-all', [AuthController::class, 'logoutAll']);
-
+        // Protected routes
+        Route::middleware(['auth:api', 'active.session'])->group(function () {
+            Route::get('/me', [AuthController::class, 'me']);
+            Route::post('/logout', [AuthController::class, 'logout']);
+            Route::post('/logout-all', [AuthController::class, 'logoutAll']);
+        });
     });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Profile Routes
+    |--------------------------------------------------------------------------
+    */
+
+    Route::prefix('profile')
+        ->middleware(['auth:api', 'active.session'])
+        ->controller(ProfileController::class)
+        ->group(function () {
+            Route::get('/', 'show');
+            Route::patch('/', 'update');
+        });
 
 });
