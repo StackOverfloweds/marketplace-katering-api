@@ -1,742 +1,870 @@
-# Marketplace Katering --- Backend
+# Marketplace Katering API
 
+Backend REST API untuk aplikasi **Marketplace Katering** yang menghubungkan customer dengan merchant/penyedia jasa katering. Repository ini berfokus pada pengembangan backend menggunakan Laravel, PostgreSQL, Eloquent ORM, dan autentikasi berbasis JWT.
 
-## 1. Ringkasan Proyek
+> **Project scope:** Repository ini khusus untuk backend Laravel. Frontend dikembangkan pada aplikasi/repository terpisah.
 
-Marketplace Katering menghubungkan perusahaan katering (**Merchant**)
-dengan kantor/perusahaan yang membutuhkan makanan (**Customer**).
+---
 
-Backend bertanggung jawab atas: - Registrasi, login, autentikasi, dan
-otorisasi. - Pengelolaan profil Merchant dan Customer. - Pengelolaan
-kategori dan menu. - Katalog Merchant dan menu. - Checkout dan
-pengelolaan pesanan. - Perhitungan total pesanan di sisi server. -
-Pembuatan dan pengelolaan invoice.
+## Table of Contents
 
-**Keputusan scope awal:** satu order hanya untuk satu Merchant.
+- [1. Project Overview](#1-project-overview)
+- [2. Technology Stack](#2-technology-stack)
+- [3. Architecture](#3-architecture)
+- [4. Core Modules](#4-core-modules)
+- [5. Database Design](#5-database-design)
+  - [5.1 Database Principles](#51-database-principles)
+  - [5.2 Users](#52-table-users)
+  - [5.3 Profiles](#53-table-profiles)
+  - [5.4 Categories](#54-table-categories)
+  - [5.5 Menus](#55-table-menus)
+  - [5.6 Orders](#56-table-orders)
+  - [5.7 Order Items](#57-table-order_items)
+  - [5.8 Invoices](#58-table-invoices)
+  - [5.9 Entity Relationship Diagram](#59-entity-relationship-diagram)
+  - [5.10 Database Integrity and Business Rules](#510-database-integrity-and-business-rules)
+- [6. Authentication and Authorization](#6-authentication-and-authorization)
+- [7. API Design Convention](#7-api-design-convention)
+- [8. Project Structure](#8-project-structure)
+- [9. Installation and Configuration](#9-installation-and-configuration)
+- [10. Development Workflow](#10-development-workflow)
+- [11. Testing](#11-testing)
+- [12. Security Guidelines](#12-security-guidelines)
+- [13. Development Roadmap](#13-development-roadmap)
 
-## 2. Scope Backend
+---
 
-**Termasuk:** REST API JSON, registrasi/login, profil, CRUD kategori dan
-menu, katalog, checkout, order items, perhitungan total di backend,
-invoice, validasi request, role, dan kepemilikan data.
+## 1. Project Overview
 
-**Belum termasuk/belum ditetapkan:** payment gateway, tracking kurir,
-multi-merchant checkout, notifikasi real-time, admin panel, pajak,
-ongkir, diskon, refund, dan minimum order.
+Marketplace Katering API menyediakan layanan backend untuk proses marketplace katering, mulai dari pengelolaan akun, profil pengguna, kategori, katalog menu, pemesanan, hingga penerbitan invoice.
 
-## 3. Technology Stack
+Terdapat dua jenis pengguna utama:
 
-  -----------------------------------------------------------------------
-  Layer                   Teknologi               Keterangan
-  ----------------------- ----------------------- -----------------------
-  Backend                 Laravel                 REST API dan business
-                                                  logic
+- **Merchant:** Pengguna yang menawarkan produk atau layanan katering.
+- **Customer:** Pengguna yang mencari dan melakukan pemesanan produk katering.
 
-  Language                PHP                     Versi ditetapkan saat
-                                                  inisialisasi
+### Project Goals
 
-  API                     REST / JSON             Kontrak komunikasi
+- Menyediakan REST API yang konsisten untuk aplikasi marketplace katering.
+- Memisahkan kredensial autentikasi dari informasi profil pengguna.
+- Mengelola katalog menu milik merchant.
+- Mendukung proses pemesanan customer kepada merchant.
+- Menyimpan histori transaksi dengan snapshot harga dan nama menu.
+- Menjaga integritas data melalui relasi, constraint, dan transaksi database.
 
-  Database                PostgreSQL              Database relasional
+---
 
-  ORM                     Eloquent                Model dan relasi
+## 2. Technology Stack
 
-  Authentication          JWT                     Access token dan
-                                                  refresh flow
+| Component | Technology |
+|---|---|
+| Backend Framework | Laravel |
+| Programming Language | PHP |
+| Database | PostgreSQL |
+| ORM | Laravel Eloquent |
+| API Style | REST API |
+| Response Format | JSON |
+| Authentication | JWT |
+| Testing | Pest / PHPUnit |
+| Dependency Manager | Composer |
+| Version Control | Git & GitHub |
 
-  JWT package             `tymon/jwt-auth`        Verifikasi
-                          (usulan)                kompatibilitas
-                                                  Laravel/PHP
+Versi Laravel dan PHP mengikuti versi stabil yang kompatibel dengan dependency project pada saat instalasi. Versi aktual dapat diperiksa melalui `php artisan --version` dan `php -v`.
 
-  Authorization           Middleware + Policies   Role dan kepemilikan
-                                                  data
+---
 
-  Validation              Form Request            Validasi input
+## 3. Architecture
 
-  Response                API Resources           Format response
+Project menggunakan pendekatan **Modular Monolith**.
 
-  Testing                 Pest / PHPUnit          Pengujian
+Setiap domain bisnis dikelompokkan berdasarkan tanggung jawabnya, tetapi seluruh modul tetap berada dalam satu aplikasi Laravel dan satu deployment backend.
 
-  File storage            Laravel Filesystem      Logo dan foto menu
-  -----------------------------------------------------------------------
+### Architectural Principles
 
-Versi Laravel, PHP, PostgreSQL, dan kompatibilitas package JWT harus
-dipastikan saat inisialisasi. Jangan mengunci versi package sebelum
-memeriksa dukungan versi Laravel yang dipilih.
+1. **Separation of Concerns** — Controller, Service, Model, Request, dan Resource memiliki tanggung jawab masing-masing.
+2. **Domain-oriented modules** — Fitur dikelompokkan berdasarkan domain bisnis.
+3. **Reusable business logic** — Aturan bisnis ditempatkan pada Service Layer, bukan ditumpuk di Controller.
+4. **Database integrity** — Foreign key, unique constraint, index, dan transaction digunakan sesuai kebutuhan.
+5. **API consistency** — Response API menggunakan format JSON yang konsisten.
 
-## 4. Arsitektur Backend
+### Request Flow
 
-Backend menggunakan pendekatan **Modular Monolith**. Seluruh modul
-berada dalam satu aplikasi Laravel dengan pemisahan tanggung jawab
-berdasarkan domain bisnis.
-
-``` mermaid
-flowchart TB
-    CLIENT["API Client"] --> API["Laravel REST API"]
-    API --> AUTH["Authentication"]
-    API --> PROFILE["Users & Profiles"]
-    API --> CATALOG["Categories & Menu Catalog"]
-    API --> ORDER["Order Management"]
-    API --> INVOICE["Invoice Management"]
-    SECURITY["Middleware, Policies & Validation"]
-    SECURITY -. protects .-> AUTH
-    SECURITY -. protects .-> PROFILE
-    SECURITY -. protects .-> CATALOG
-    SECURITY -. protects .-> ORDER
-    SECURITY -. protects .-> INVOICE
-    AUTH --> DB[("PostgreSQL")]
-    PROFILE --> DB
-    CATALOG --> DB
-    ORDER --> DB
-    INVOICE --> DB
-    CATALOG --> STORAGE[("File Storage")]
+```text
+Client
+  |
+  v
+API Route
+  |
+  v
+Middleware (Authentication / Authorization)
+  |
+  v
+Form Request (Validation)
+  |
+  v
+Controller
+  |
+  v
+Service Layer (Business Logic)
+  |
+  v
+Eloquent Model
+  |
+  v
+PostgreSQL
+  |
+  v
+API Resource / JSON Response
 ```
 
-Prinsip pemisahan kode: - **Controller:** menerima request dan
-mengembalikan response. - **Form Request:** memvalidasi input. -
-**Service:** menjalankan business logic. - **Model:** merepresentasikan
-tabel dan relasi Eloquent. - **API Resource:** membentuk response API. -
-**Middleware:** memeriksa autentikasi dan role. - **Policy:** memeriksa
-hak akses terhadap resource. - **Migration:** sumber utama perubahan
-skema database.
+Modular Monolith dipilih agar struktur aplikasi tetap terorganisasi tanpa menambah kompleksitas operasional microservices pada tahap awal.
 
-Hindari menempatkan seluruh business logic di Controller.
+---
 
-## 5. Desain Database
+## 4. Core Modules
 
-### 5.1 Prinsip `users` dan `profiles`
+| Module | Responsibility |
+|---|---|
+| Authentication | Register, login, logout, token refresh, dan identitas pengguna |
+| User & Profile | Pengelolaan akun, role, dan informasi profil |
+| Category | Pengelolaan kategori menu |
+| Menu Management | Pengelolaan menu katering milik merchant |
+| Marketplace Catalog | Menampilkan dan mencari katalog menu |
+| Order Management | Pembuatan dan pengelolaan pesanan |
+| Invoice Management | Penerbitan dan pengelolaan invoice |
 
-Identitas pengguna dan detail profil hanya menggunakan **dua tabel**: -
-`users`: informasi autentikasi dan role. - `profiles`: informasi profil
-untuk seluruh role.
+### Module Scope
 
-Role pada `users` membedakan Merchant dan Customer. Setiap user memiliki
-maksimal satu profile melalui relasi one-to-one. Tidak menggunakan tabel
-`merchant_profiles` atau `customer_profiles`.
+#### Authentication
+- Register akun.
+- Login menggunakan username dan password.
+- Logout / invalidasi token sesuai mekanisme JWT yang digunakan.
+- Refresh token apabila didukung konfigurasi JWT.
+- Mengambil informasi pengguna yang sedang login.
 
-### 5.2 Tabel `users`
+#### User & Profile
+- Mengelola username dan status akun.
+- Mengelola role `merchant` dan `customer`.
+- Mengelola nama lengkap, email, nomor telepon, dan informasi profil.
+- Menyimpan informasi usaha untuk profile merchant.
 
-  Kolom                        Tipe/aturan      Keterangan
-  ---------------------------- ---------------- ----------------------------
-  `id`                         BIGINT PK        ID user
-  `name`                       VARCHAR          Nama akun
-  `email`                      VARCHAR UNIQUE   Email login
-  `password`                   VARCHAR          Password hash
-  `role`                       VARCHAR/ENUM     `merchant` atau `customer`
-  `is_active`                  BOOLEAN          Status akun
-  `created_at`, `updated_at`   TIMESTAMP        Audit waktu
+#### Category
+- Membuat dan mengubah kategori.
+- Mengaktifkan atau menonaktifkan kategori.
+- Menentukan urutan tampilan kategori.
 
-### 5.3 Tabel `profiles`
+#### Menu Management
+- Merchant membuat, mengubah, dan mengelola menu.
+- Menu terhubung dengan kategori.
+- Merchant mengatur ketersediaan menu.
+- Menu mendukung soft delete.
 
-  Kolom                        Tipe/aturan        Keterangan
-  ---------------------------- ------------------ ------------------------
-  `id`                         BIGINT PK          ID profile
-  `user_id`                    BIGINT FK UNIQUE   Relasi ke `users.id`
-  `company_name`               VARCHAR            Nama perusahaan/kantor
-  `contact_person`             VARCHAR NULL       PIC perusahaan
-  `phone`                      VARCHAR            Nomor kontak
-  `address`                    TEXT               Alamat
-  `city`                       VARCHAR            Kota
-  `description`                TEXT NULL          Deskripsi sesuai role
-  `logo`                       VARCHAR NULL       Path logo/foto
-  `created_at`, `updated_at`   TIMESTAMP          Audit waktu
+#### Marketplace Catalog
+- Menampilkan kategori dan menu yang tersedia.
+- Menampilkan detail menu dan informasi merchant.
+- Menyediakan pencarian dan filter katalog sesuai kebutuhan API.
 
-Kolom yang tidak relevan untuk role tertentu dapat bernilai `NULL`.
-Validasi field wajib dilakukan berdasarkan role pada Form
-Request/Service. Simpan path file pada database, bukan binary file.
+#### Order Management
+- Customer membuat pesanan kepada satu merchant.
+- Pesanan memiliki satu atau lebih item.
+- Backend menghitung subtotal dan total.
+- Merchant mengelola status pesanan sesuai aturan transisi.
 
-### 5.4 ERD Identitas dan Profil
+#### Invoice Management
+- Membuat invoice berdasarkan order.
+- Menjaga nomor invoice tetap unik.
+- Menyimpan status invoice dan waktu pembayaran.
+- Integrasi payment gateway berada di luar cakupan modul invoice awal.
 
-``` mermaid
+---
+
+## 5. Database Design
+
+### 5.1 Database Principles
+
+Database menggunakan PostgreSQL dengan Eloquent ORM.
+
+Standar database:
+
+- Seluruh primary key tabel bisnis menggunakan **UUID v7**.
+- Seluruh foreign key tabel bisnis menggunakan UUID.
+- UUID disimpan menggunakan native UUID type PostgreSQL.
+- Tabel `users` hanya menyimpan kredensial autentikasi dan role.
+- Tabel `profiles` menyimpan informasi lengkap pengguna.
+- Seluruh nominal uang menggunakan `DECIMAL(14,2)`.
+- Foreign key, unique constraint, dan index diterapkan sesuai kebutuhan.
+- Tabel bisnis menggunakan `created_at` dan `updated_at`.
+- Laravel migrations menjadi sumber utama perubahan skema database.
+
+> UUID v7 digunakan untuk identifier yang lebih sulit ditebak dibandingkan integer berurutan dan memiliki karakteristik timestamp ordering. UUID bukan pengganti authentication maupun authorization.
+
+### 5.2 Table `users`
+
+Menyimpan informasi autentikasi dan otorisasi pengguna.
+
+| Column | Type | Constraint | Description |
+|---|---|---|---|
+| id | UUID | PK | User identifier |
+| username | VARCHAR(50) | UNIQUE, NOT NULL | Username untuk login |
+| password | VARCHAR | NOT NULL | Hashed password |
+| role | VARCHAR(20) | INDEX, NOT NULL | `merchant` / `customer` |
+| is_active | BOOLEAN | DEFAULT TRUE | Account status |
+| created_at | TIMESTAMP | | Creation time |
+| updated_at | TIMESTAMP | | Last update |
+
+Catatan:
+- Password harus disimpan dalam bentuk hash.
+- Username digunakan sebagai identifier login.
+- Email tidak disimpan pada tabel users, melainkan pada profiles.
+
+### 5.3 Table `profiles`
+
+Menyimpan informasi lengkap pengguna. Setiap user memiliki maksimal satu profile.
+
+| Column | Type | Constraint | Description |
+|---|---|---|---|
+| id | UUID | PK | Profile identifier |
+| user_id | UUID | FK, UNIQUE | Reference to `users.id` |
+| full_name | VARCHAR(150) | NOT NULL | Full name |
+| email | VARCHAR | UNIQUE | Email address |
+| phone | VARCHAR(20) | NOT NULL | Contact number |
+| company_name | VARCHAR | NULL | Company or catering name |
+| contact_person | VARCHAR | NULL | Company contact person |
+| address | TEXT | NULL | Address |
+| city | VARCHAR(100) | NULL | City |
+| description | TEXT | NULL | Profile description |
+| logo | VARCHAR | NULL | Logo or profile image path |
+| created_at | TIMESTAMP | | Creation time |
+| updated_at | TIMESTAMP | | Last update |
+
+Fields related to company information may be NULL depending on the user's role. Validasi kelengkapan profil dilakukan berdasarkan role pada application layer.
+
+### 5.4 Table `categories`
+
+Stores master categories for catering menus.
+
+| Column | Type | Constraint | Description |
+|---|---|---|---|
+| id | UUID | PK | Category identifier |
+| name | VARCHAR(100) | NOT NULL | Category name |
+| slug | VARCHAR(120) | UNIQUE | URL-friendly identifier |
+| description | TEXT | NULL | Category description |
+| is_active | BOOLEAN | DEFAULT TRUE | Category status |
+| sort_order | SMALLINT | DEFAULT 0 | Display ordering |
+| created_at | TIMESTAMP | | Creation time |
+| updated_at | TIMESTAMP | | Last update |
+
+### 5.5 Table `menus`
+
+Stores catering products owned by merchants.
+
+| Column | Type | Constraint | Description |
+|---|---|---|---|
+| id | UUID | PK | Menu identifier |
+| merchant_profile_id | UUID | FK | Reference to `profiles.id` |
+| category_id | UUID | FK | Reference to `categories.id` |
+| name | VARCHAR(150) | NOT NULL | Menu name |
+| slug | VARCHAR(180) | NOT NULL | Menu slug |
+| description | TEXT | NULL | Menu description |
+| photo | VARCHAR | NULL | Menu image path |
+| price | DECIMAL(14,2) | NOT NULL | Menu price |
+| is_available | BOOLEAN | DEFAULT TRUE | Availability |
+| created_at | TIMESTAMP | | Creation time |
+| updated_at | TIMESTAMP | | Last update |
+| deleted_at | TIMESTAMP | NULL | Soft delete timestamp |
+
+Constraints and indexes:
+- `UNIQUE(merchant_profile_id, slug)`
+- Index `(merchant_profile_id, is_available)`
+- Index `(category_id, is_available)`
+
+Menu menggunakan soft delete untuk menjaga histori dan referensi transaksi.
+
+### 5.6 Table `orders`
+
+Stores order transaction headers.
+
+| Column | Type | Constraint | Description |
+|---|---|---|---|
+| id | UUID | PK | Order identifier |
+| order_number | VARCHAR(50) | UNIQUE | Order reference |
+| customer_profile_id | UUID | FK | Customer profile |
+| merchant_profile_id | UUID | FK | Merchant profile |
+| delivery_date | DATE | NOT NULL | Delivery date |
+| delivery_address | TEXT | NOT NULL | Delivery address snapshot |
+| subtotal | DECIMAL(14,2) | DEFAULT 0 | Order subtotal |
+| total | DECIMAL(14,2) | DEFAULT 0 | Final order total |
+| status | VARCHAR(30) | DEFAULT `pending` | Order status |
+| notes | TEXT | NULL | Additional notes |
+| created_at | TIMESTAMP | | Creation time |
+| updated_at | TIMESTAMP | | Last update |
+
+Order status:
+- `pending`
+- `confirmed`
+- `preparing`
+- `delivered`
+- `cancelled`
+
+Indexes:
+- `(customer_profile_id, status)`
+- `(merchant_profile_id, status)`
+- `delivery_date`
+
+Business rule: satu order hanya ditujukan kepada satu merchant. Jika customer memesan dari beberapa merchant, setiap merchant memperoleh order terpisah.
+
+### 5.7 Table `order_items`
+
+Stores individual menu items in an order.
+
+| Column | Type | Constraint | Description |
+|---|---|---|---|
+| id | UUID | PK | Order item identifier |
+| order_id | UUID | FK | Reference to `orders.id` |
+| menu_id | UUID | FK, NULL | Reference to `menus.id` |
+| menu_name | VARCHAR(150) | NOT NULL | Menu name snapshot |
+| price | DECIMAL(14,2) | NOT NULL | Price snapshot |
+| quantity | INTEGER | NOT NULL | Ordered quantity |
+| subtotal | DECIMAL(14,2) | NOT NULL | Item subtotal |
+| created_at | TIMESTAMP | | Creation time |
+| updated_at | TIMESTAMP | | Last update |
+
+Menu name dan price disimpan sebagai snapshot untuk menjaga histori transaksi meskipun data menu berubah. Jika menu dihapus permanen, `menu_id` menjadi NULL sedangkan snapshot transaksi tetap tersedia.
+
+### 5.8 Table `invoices`
+
+Stores invoices generated from orders.
+
+| Column | Type | Constraint | Description |
+|---|---|---|---|
+| id | UUID | PK | Invoice identifier |
+| order_id | UUID | FK, UNIQUE | Reference to `orders.id` |
+| invoice_number | VARCHAR(50) | UNIQUE | Invoice reference |
+| invoice_date | DATE | NOT NULL | Invoice date |
+| subtotal | DECIMAL(14,2) | NOT NULL | Invoice subtotal |
+| total | DECIMAL(14,2) | NOT NULL | Invoice total |
+| status | VARCHAR(30) | DEFAULT `issued` | Invoice status |
+| paid_at | TIMESTAMP | NULL | Payment timestamp |
+| created_at | TIMESTAMP | | Creation time |
+| updated_at | TIMESTAMP | | Last update |
+
+Invoice status:
+- `issued`
+- `paid`
+- `cancelled`
+
+Satu order maksimal memiliki satu invoice. Payment processing dan payment gateway berada di luar cakupan invoice module awal.
+
+### 5.9 Entity Relationship Diagram
+
+```mermaid
 erDiagram
     USERS ||--o| PROFILES : has
+    PROFILES ||--o{ MENUS : owns
+    CATEGORIES ||--o{ MENUS : categorizes
+    PROFILES ||--o{ ORDERS : customer
+    PROFILES ||--o{ ORDERS : merchant
+    ORDERS ||--|{ ORDER_ITEMS : contains
+    MENUS o|--o{ ORDER_ITEMS : referenced_by
+    ORDERS ||--o| INVOICES : generates
+
     USERS {
-        bigint id PK
-        string name
-        string email UK
+        uuid id PK
+        string username UK
         string password
         string role
         boolean is_active
-        timestamp created_at
-        timestamp updated_at
     }
+
     PROFILES {
-        bigint id PK
-        bigint user_id FK,UK
-        string company_name
-        string contact_person
+        uuid id PK
+        uuid user_id FK,UK
+        string full_name
+        string email UK
         string phone
-        text address
+        string company_name
+        string address
         string city
-        text description
-        string logo
-        timestamp created_at
-        timestamp updated_at
+    }
+
+    CATEGORIES {
+        uuid id PK
+        string name
+        string slug UK
+        boolean is_active
+    }
+
+    MENUS {
+        uuid id PK
+        uuid merchant_profile_id FK
+        uuid category_id FK
+        string name
+        string slug
+        decimal price
+        boolean is_available
+    }
+
+    ORDERS {
+        uuid id PK
+        string order_number UK
+        uuid customer_profile_id FK
+        uuid merchant_profile_id FK
+        decimal subtotal
+        decimal total
+        string status
+    }
+
+    ORDER_ITEMS {
+        uuid id PK
+        uuid order_id FK
+        uuid menu_id FK
+        string menu_name
+        decimal price
+        integer quantity
+        decimal subtotal
+    }
+
+    INVOICES {
+        uuid id PK
+        uuid order_id FK,UK
+        string invoice_number UK
+        decimal total
+        string status
     }
 ```
 
-### 5.5 Tabel bisnis
+### 5.10 Database Integrity and Business Rules
 
-  -----------------------------------------------------------------------
-  Tabel                               Kolom utama / fungsi
-  ----------------------------------- -----------------------------------
-  `categories`                        `id`, `name`, `type`
+1. All business tables use UUID v7 primary keys.
+2. Foreign keys use PostgreSQL UUID type.
+3. Each user can have a maximum of one profile.
+4. User role determines Merchant or Customer access.
+5. Profile fields are validated according to user role.
+6. A merchant can own multiple menus.
+7. Each menu belongs to one category.
+8. Each order belongs to one customer and one merchant.
+9. All items in an order must belong to the same merchant.
+10. Order items preserve menu name and price snapshots.
+11. Order totals are calculated on the backend.
+12. One order can generate a maximum of one invoice.
+13. Menu uses soft deletes to preserve historical references.
+14. Foreign keys, unique constraints, and indexes maintain data integrity.
+15. Database transactions are used for checkout and invoice generation.
+16. Laravel migrations are the source of truth for schema changes.
 
-  `menus`                             `id`, `merchant_profile_id` FK ke
-                                      `profiles.id`, `category_id`,
-                                      `name`, `description`, `photo`,
-                                      `price DECIMAL`, `is_available`
+---
 
-  `orders`                            `id`, `order_number`,
-                                      `customer_profile_id` FK ke
-                                      `profiles.id`,
-                                      `merchant_profile_id` FK ke
-                                      `profiles.id`, `delivery_date`,
-                                      `delivery_address`, `subtotal`,
-                                      `total`, `status`
+## 6. Authentication and Authorization
 
-  `order_items`                       `id`, `order_id`, `menu_id`,
-                                      `menu_name` snapshot, `price`
-                                      snapshot, `quantity`, `subtotal`
+Authentication menggunakan JWT (JSON Web Token).
 
-  `invoices`                          `id`, `order_id` UNIQUE,
-                                      `invoice_number` UNIQUE,
-                                      `invoice_date`, `subtotal`,
-                                      `total`, `status`
-  -----------------------------------------------------------------------
+### Login Credentials
 
-`merchant_categories` belum menjadi tabel wajib. Kebutuhannya perlu
-dikonfirmasi; kategori Merchant dapat diturunkan dari kategori menu
-apabila sesuai aturan bisnis.
+- `username`
+- `password`
 
-### 5.6 ERD Relasi Bisnis
+Email merupakan informasi pada `profiles`, bukan identifier login.
 
-``` mermaid
-erDiagram
-    USERS ||--o| PROFILES : has
-    PROFILES ||--o{ MENUS : owns_as_merchant
-    CATEGORIES ||--o{ MENUS : categorizes
-    PROFILES ||--o{ ORDERS : places_as_customer
-    PROFILES ||--o{ ORDERS : receives_as_merchant
-    ORDERS ||--|{ ORDER_ITEMS : contains
-    MENUS ||--o{ ORDER_ITEMS : referenced_by
-    ORDERS ||--o| INVOICES : generates
+### Authentication Flow
+
+```text
+Register
+   |
+   v
+Create User (username, hashed password, role)
+   |
+   v
+Create Profile (email and user details)
+   |
+   v
+Login using username/password
+   |
+   v
+Validate credentials
+   |
+   v
+Issue JWT
+   |
+   v
+Access protected API
 ```
 
-`menus.merchant_profile_id`, `orders.customer_profile_id`, dan
-`orders.merchant_profile_id` mengarah ke `profiles.id`. Service dan
-Policy harus memastikan role profile sesuai dengan operasi yang
-dilakukan.
+### Authorization
 
-### 5.7 Integritas Database
+Role utama:
+- `merchant`
+- `customer`
 
-1.  `profiles.user_id` memiliki foreign key dan UNIQUE constraint agar
-    satu user memiliki maksimal satu profile.
-2.  Role `merchant` atau `customer` disimpan pada `users`.
-3.  Service memastikan profile dibuat dan field wajib diisi sesuai role.
-4.  Gunakan `DECIMAL` untuk nilai uang, bukan floating point.
-5.  `order_items` menyimpan snapshot nama menu dan harga agar histori
-    transaksi tidak berubah.
-6.  Satu order hanya untuk satu Merchant.
-7.  Satu order menghasilkan maksimal satu invoice (`UNIQUE(order_id)`).
-8.  Gunakan foreign key, unique constraint, index, dan timestamps.
-9.  Pertimbangkan soft delete untuk menu.
-10. Migration Laravel menjadi sumber utama perubahan skema database.
+Authorization wajib memeriksa role dan kepemilikan resource. UUID yang sulit ditebak tidak menggantikan pemeriksaan authorization.
 
-## 6. Authentication & Authorization
+### JWT Implementation Notes
 
-### 6.1 Authentication
+- Password tidak pernah dikembalikan pada API response.
+- Token harus memiliki masa berlaku.
+- Secret/key JWT disimpan pada environment variable.
+- Refresh dan revocation mengikuti library JWT yang dipilih.
+- JWT subject harus mengidentifikasi user secara konsisten menggunakan UUID user ID, bukan mengekspos username sebagai pengganti primary key.
 
--   Login memvalidasi email/password dan menerbitkan JWT.
--   Password disimpan menggunakan Laravel Hash (bcrypt/Argon2).
--   Usulan masa berlaku: access token 15 menit, refresh token 7 hari.
--   Refresh token perlu mendukung rotation dan revocation.
--   Endpoint privat memverifikasi signature, algoritma yang diizinkan,
-    expiry, dan claims relevan.
--   Detail implementasi token mengikuti kemampuan package JWT yang
-    dipilih.
+---
 
-Untuk browser SPA: access token disimpan di memory; refresh token
-menggunakan cookie `HttpOnly`, `Secure`, `SameSite` dengan
-rotation/revocation; terapkan CSRF protection sesuai pola cookie; jangan
-simpan refresh token di `localStorage`; HTTPS wajib di production.
+## 7. API Design Convention
 
-### 6.2 Authorization
+API menggunakan RESTful convention dan JSON.
 
-Authentication memastikan identitas pengguna, sedangkan authorization
-menentukan akses terhadap fitur dan data.
+### Base URL
 
-Gunakan middleware untuk autentikasi/pemeriksaan role, Policy untuk
-kepemilikan resource, dan Service untuk validasi aturan bisnis lintas
-model.
-
-Aturan akses: - Hanya Merchant yang dapat mengelola menu miliknya. -
-Merchant hanya dapat melihat dan memproses order yang ditujukan
-kepadanya. - Customer hanya dapat melihat order dan invoice miliknya. -
-Profile Merchant harus berasal dari user dengan role `merchant`. -
-Profile Customer harus berasal dari user dengan role `customer`.
-
-### 6.3 Endpoint Auth
-
-  Method   Endpoint                  Fungsi
-  -------- ------------------------- ------------------------------
-  POST     `/api/v1/auth/register`   Registrasi
-  POST     `/api/v1/auth/login`      Login
-  POST     `/api/v1/auth/refresh`    Refresh access token
-  POST     `/api/v1/auth/logout`     Revoke token/refresh session
-  GET      `/api/v1/auth/me`         User aktif
-
-## 7. Modul dan Endpoint Utama
-
-Seluruh endpoint menggunakan prefix `/api/v1`.
-
-  -----------------------------------------------------------------------
-  Area                                Endpoint inti
-  ----------------------------------- -----------------------------------
-  Profile                             `GET/PUT /profile`
-
-  Merchant menus                      CRUD `/merchant/menus`
-
-  Merchant orders                     `GET /merchant/orders`, detail, dan
-                                      update status
-
-  Marketplace                         `GET /merchants`,
-                                      `/merchants/{id}`, `/menus`,
-                                      `/categories`
-
-  Customer orders                     `POST /orders`, `GET /orders`,
-                                      detail
-
-  Invoice                             `GET /invoices`, detail, download
-  -----------------------------------------------------------------------
-
-Endpoint profile mengembalikan profile user yang sedang login. Endpoint
-Merchant/Customer membatasi akses berdasarkan `users.role` dan profile
-pemilik.
-
-## 8. Business Flow
-
-### 8.1 Registrasi dan Login
-
-``` mermaid
-flowchart TD
-    A["User membuka aplikasi"] --> B["Pilih Register"]
-    B --> C{"Pilih role"}
-    C -->|Merchant| D["Isi akun dan data katering"]
-    C -->|Customer| E["Isi akun dan data kantor"]
-    D --> F["Validasi berdasarkan role"]
-    E --> F
-    F --> G["Hash password"]
-    G --> H["DB transaction: simpan user dan satu profile"]
-    H --> I["Login"]
-    I --> J["Validasi kredensial"]
-    J --> K["Terbitkan JWT"]
-    K --> L["Akses sesuai role"]
+```text
+/api/v1
 ```
 
-Penyimpanan `users` dan `profiles` dilakukan dalam satu database
-transaction agar tidak terbentuk akun tanpa profile akibat proses gagal.
+### Endpoint Groups
 
-### 8.2 Merchant Mengelola Menu
+Endpoint berikut merupakan rancangan resource API yang akan diimplementasikan bertahap.
 
-``` mermaid
-flowchart TD
-    A["Merchant login"] --> B["Menu management API"]
-    B --> C["Tambah / edit / hapus menu"]
-    C --> D["Validasi role dan kepemilikan profile"]
-    D --> E["Upload foto jika ada"]
-    E --> F["Simpan menu dengan merchant_profile_id"]
-    F --> G["Menu aktif tampil di katalog"]
-```
+| Module | Method | Endpoint | Description |
+|---|---|---|---|
+| Authentication | POST | `/auth/register` | Register account |
+| Authentication | POST | `/auth/login` | Login |
+| Authentication | POST | `/auth/logout` | Logout |
+| Authentication | POST | `/auth/refresh` | Refresh token |
+| Authentication | GET | `/auth/me` | Current user |
+| Profile | GET | `/profile` | Get profile |
+| Profile | PUT | `/profile` | Update profile |
+| Categories | GET | `/categories` | List categories |
+| Categories | GET | `/categories/{id}` | Category detail |
+| Menus | GET | `/menus` | Browse menus |
+| Menus | GET | `/menus/{id}` | Menu detail |
+| Menus | POST | `/merchant/menus` | Create menu |
+| Menus | PUT | `/merchant/menus/{id}` | Update menu |
+| Menus | DELETE | `/merchant/menus/{id}` | Delete menu |
+| Orders | POST | `/orders` | Create order |
+| Orders | GET | `/orders` | List user's orders |
+| Orders | GET | `/orders/{id}` | Order detail |
+| Orders | PATCH | `/merchant/orders/{id}/status` | Update order status |
+| Invoices | GET | `/invoices/{id}` | Invoice detail |
 
-### 8.3 Customer Checkout
+### Standard Success Response
 
-``` mermaid
-flowchart TD
-    A["Customer login"] --> B["Cari Merchant"]
-    B --> C["Pilih satu Merchant"]
-    C --> D["Pilih menu dan jumlah"]
-    D --> E["Tanggal dan alamat pengiriman"]
-    E --> F["Checkout API"]
-    F --> G["Validasi role, menu, Merchant, dan tanggal"]
-    G --> H{"Valid?"}
-    H -->|Tidak| I["Kembalikan validation error"]
-    H -->|Ya| J["DB transaction"]
-    J --> K["Simpan order"]
-    K --> L["Simpan order items dan snapshot harga"]
-    L --> M["Hitung total di backend"]
-    M --> N["Generate invoice"]
-    N --> O["Commit transaction"]
-    O --> P["Order dan invoice tersedia"]
-```
-
-### 8.4 Status Order
-
-``` mermaid
-stateDiagram-v2
-    [*] --> pending
-    pending --> confirmed
-    pending --> cancelled
-    confirmed --> preparing
-    confirmed --> cancelled
-    preparing --> delivered
-    delivered --> [*]
-    cancelled --> [*]
-```
-
-Status usulan: `pending`, `confirmed`, `preparing`, `delivered`,
-`cancelled`. Transisi dan kebijakan pembatalan perlu dikonfirmasi.
-
-## 9. Business Rules
-
-1.  Satu order hanya terkait dengan satu Merchant.
-2.  Semua menu dalam satu order harus berasal dari Merchant yang sama.
-3.  Harga diambil dari database; total dari frontend tidak dipercaya.
-4.  Simpan snapshot nama menu dan harga di order item.
-5.  Order, items, dan invoice dibuat dalam satu database transaction.
-6.  Jika salah satu proses gagal, rollback seluruh transaksi.
-7.  Invoice hanya dapat diakses Customer/Merchant yang terkait.
-8.  Merchant hanya mengelola menu dan order miliknya.
-9.  Customer hanya melihat order dan invoice miliknya.
-10. Payment gateway belum termasuk scope awal.
-
-## 10. Struktur Folder Backend Laravel
-
-Struktur berikut merupakan usulan dan dapat disesuaikan dengan versi
-Laravel yang digunakan.
-
-``` text
-backend/
-├── app/
-│   ├── Enums/
-│   │   ├── UserRole.php
-│   │   └── OrderStatus.php
-│   ├── Http/
-│   │   ├── Controllers/Api/
-│   │   ├── Middleware/
-│   │   ├── Requests/
-│   │   └── Resources/
-│   ├── Models/
-│   │   ├── User.php
-│   │   ├── Profile.php
-│   │   ├── Category.php
-│   │   ├── Menu.php
-│   │   ├── Order.php
-│   │   ├── OrderItem.php
-│   │   └── Invoice.php
-│   ├── Policies/
-│   └── Services/
-│       ├── AuthService.php
-│       ├── ProfileService.php
-│       ├── MenuService.php
-│       ├── OrderService.php
-│       └── InvoiceService.php
-├── database/
-│   ├── factories/
-│   ├── migrations/
-│   └── seeders/
-├── routes/
-│   └── api.php
-├── tests/
-│   ├── Feature/
-│   └── Unit/
-├── .env.example
-├── composer.json
-└── README.md
-```
-
-  Komponen            Tanggung jawab
-  ------------------- -----------------------------------
-  `Enums`             Nilai role dan status terstandar
-  `Controllers/Api`   Handler endpoint API
-  `Middleware`        Autentikasi dan pemeriksaan role
-  `Requests`          Validasi input
-  `Resources`         Format response JSON
-  `Models`            Struktur data dan relasi Eloquent
-  `Policies`          Hak akses resource
-  `Services`          Business logic
-  `Migrations`        Perubahan skema database
-  `Seeders`           Data awal
-  `Factories`         Data untuk pengujian
-  `tests`             Unit test dan feature test
-
-## 11. Standar Implementasi API
-
-### 11.1 API Versioning
-
-Gunakan prefix `/api/v1`. Perubahan kontrak API yang tidak kompatibel
-dapat dirilis melalui versi berikutnya.
-
-### 11.2 Validasi dan Response
-
--   Gunakan Form Request untuk validasi input.
--   Gunakan API Resource untuk format response.
--   Gunakan HTTP status code sesuai hasil operasi.
--   Jangan mengembalikan password, hash, token rahasia, atau data
-    internal yang tidak diperlukan.
--   Pesan error harus konsisten dan tidak membocorkan detail internal
-    server.
-
-Contoh response sukses:
-
-``` json
+```json
 {
   "success": true,
-  "message": "Data berhasil diproses",
+  "message": "Data retrieved successfully",
   "data": {}
 }
 ```
 
-Contoh response validasi:
+### Standard Error Response
 
-``` json
+```json
 {
   "success": false,
-  "message": "Validasi gagal",
-  "errors": {
-    "email": ["Email wajib diisi."]
-  }
+  "message": "Validation failed",
+  "errors": {}
 }
 ```
 
-Bentuk response tersebut merupakan konvensi proyek dan perlu diterapkan
-konsisten pada seluruh endpoint.
+HTTP status code harus digunakan sesuai kondisi, misalnya `200`, `201`, `400`, `401`, `403`, `404`, `422`, dan `500`.
 
-### 11.3 Database Transaction
+---
 
-Gunakan `DB::transaction()` untuk proses yang melibatkan beberapa
-penulisan data dan harus berhasil atau gagal secara keseluruhan,
-khususnya checkout dan pembuatan invoice.
+## 8. Project Structure
 
-### 11.4 File Upload
+Aplikasi Laravel berada di dalam folder `backend/`.
 
--   Validasi tipe dan ukuran file.
--   Simpan file melalui Laravel Filesystem.
--   Simpan path file pada kolom `logo` atau `photo`.
--   Jangan menyimpan binary file langsung pada tabel profil/menu.
--   Pastikan nama file dan akses penyimpanan ditangani dengan aman.
-
-## 12. Instalasi dan Menjalankan Backend
-
-Perintah berikut merupakan alur awal. Sesuaikan versi PHP, ekstensi PHP,
-Composer, PostgreSQL, dan package JWT dengan environment proyek.
-
-### 12.1 Persiapan
-
-Pastikan tersedia: - PHP sesuai persyaratan versi Laravel yang
-dipilih. - Composer. - PostgreSQL. - Ekstensi PHP yang dibutuhkan
-Laravel dan driver PostgreSQL. - Git.
-
-### 12.2 Clone Repository
-
-``` bash
-git clone <repository-url>
-cd marketplace-katering/backend
+```text
+marketplace-katering-api/
+├── backend/
+│   ├── app/
+│   │   ├── Http/
+│   │   │   ├── Controllers/
+│   │   │   ├── Middleware/
+│   │   │   ├── Requests/
+│   │   │   └── Resources/
+│   │   ├── Models/
+│   │   ├── Providers/
+│   │   └── Services/
+│   ├── bootstrap/
+│   ├── config/
+│   ├── database/
+│   │   ├── factories/
+│   │   ├── migrations/
+│   │   └── seeders/
+│   ├── routes/
+│   │   └── api.php
+│   ├── tests/
+│   │   ├── Feature/
+│   │   └── Unit/
+│   ├── .env.example
+│   ├── artisan
+│   ├── composer.json
+│   └── phpunit.xml
+└── README.md
 ```
 
-### 12.3 Install Dependency
+Struktur dapat berkembang mengikuti kebutuhan modul. Pengelompokan folder tidak boleh mengaburkan tanggung jawab Controller, Service, Request, Resource, dan Model.
 
-``` bash
+---
+
+## 9. Installation and Configuration
+
+### Prerequisites
+
+Pastikan perangkat pengembangan memiliki:
+- PHP yang kompatibel dengan versi Laravel project.
+- Composer.
+- PostgreSQL.
+- Git.
+
+### Clone Repository
+
+```bash
+git clone https://github.com/StackOverfloweds/marketplace-katering-api.git
+cd marketplace-katering-api
+```
+
+### Install Laravel Dependencies
+
+```bash
+cd backend
 composer install
 ```
 
-### 12.4 Konfigurasi Environment
+Jika aplikasi Laravel belum dibuat, inisialisasi dari root repository:
 
-``` bash
+```bash
+composer create-project laravel/laravel backend
+```
+
+### Environment Configuration
+
+```bash
 cp .env.example .env
 php artisan key:generate
 ```
 
-Atur koneksi PostgreSQL pada `.env`:
+Atur koneksi PostgreSQL pada file `.env`:
 
-``` dotenv
+```dotenv
 APP_NAME="Marketplace Katering"
 APP_ENV=local
 APP_DEBUG=true
-APP_URL=http://localhost
+APP_URL=http://127.0.0.1:8000
 
 DB_CONNECTION=pgsql
 DB_HOST=127.0.0.1
 DB_PORT=5432
 DB_DATABASE=marketplace_katering
-DB_USERNAME=postgres
-DB_PASSWORD=
+DB_USERNAME=katering_app
+DB_PASSWORD=your_secure_password
 ```
 
-Sesuaikan nama database, username, dan password dengan konfigurasi
-lokal. Jangan commit `.env` ke repository.
+Buat role dan database PostgreSQL (sesuaikan password):
 
-### 12.5 Migration dan Seeder
+```sql
+CREATE ROLE katering_app
+WITH LOGIN PASSWORD 'your_secure_password';
 
-``` bash
+CREATE DATABASE marketplace_katering
+OWNER katering_app
+ENCODING 'UTF8';
+```
+
+### Run Migrations
+
+```bash
+php artisan config:clear
 php artisan migrate
+```
+
+### Run Seeders
+
+```bash
 php artisan db:seed
 ```
 
-Jika database lokal memang perlu dibangun ulang dan seluruh datanya
-boleh dihapus:
+Untuk menjalankan migration dan seeder sekaligus pada database development kosong:
 
-``` bash
+```bash
 php artisan migrate:fresh --seed
 ```
 
-**Peringatan:** `migrate:fresh` menghapus seluruh tabel sebelum
-menjalankan migration kembali. Jangan gunakan pada database yang berisi
-data penting.
+> **Warning:** `migrate:fresh` menghapus seluruh tabel pada database yang dipilih. Jangan jalankan pada database yang berisi data penting.
 
-### 12.6 Menjalankan Server
+### Run Development Server
 
-``` bash
+```bash
 php artisan serve
 ```
 
-API lokal secara default tersedia di `http://127.0.0.1:8000`.
+Default URL:
 
-## 13. Testing
+```text
+http://127.0.0.1:8000
+```
 
-Jalankan test:
+---
 
-``` bash
+## 10. Development Workflow
+
+Project menggunakan Git branching workflow berikut:
+
+```text
+main
+  ^
+  | promote after staging approval
+  |
+staging
+  ^
+  | promote after development validation
+  |
+ondev
+  ^
+  | Pull Request
+  |
+onfeature/<feature-name>
+```
+
+### Branch Responsibilities
+
+| Branch | Responsibility |
+|---|---|
+| `main` | Production-ready code |
+| `staging` | Testing and QA |
+| `ondev` | Integration and development |
+| `onfeature/*` | Individual feature development |
+
+### Feature Development Flow
+
+1. Ambil perubahan terbaru dari `ondev`.
+2. Buat branch baru dengan prefix `onfeature/`.
+3. Implementasikan satu fitur dalam branch tersebut.
+4. Jalankan test dan pemeriksaan lokal.
+5. Push branch dan buat Pull Request menuju `ondev`.
+6. Setelah integrasi dan pengujian development berhasil, promosikan `ondev` ke `staging`.
+7. Setelah pengujian staging disetujui, promosikan `staging` ke `main`.
+
+### Example
+
+```bash
+git fetch origin
+git switch ondev
+git pull --ff-only origin ondev
+
+git switch -c onfeature/setup-database
+
+# Implement feature
+git add .
+git commit -m "feat(database): setup database schema"
+
+git push -u origin onfeature/setup-database
+```
+
+### Branch Naming Convention
+
+Gunakan nama branch yang deskriptif:
+
+```text
+onfeature/setup-database
+onfeature/authentication
+onfeature/user-profile
+onfeature/category-management
+onfeature/menu-management
+onfeature/marketplace-catalog
+onfeature/order-management
+onfeature/invoice-management
+```
+
+### Commit Message Convention
+
+Gunakan format:
+
+```text
+<type>(<scope>): <description>
+```
+
+Contoh:
+- `feat(auth): implement JWT authentication`
+- `feat(menu): add merchant menu management`
+- `fix(order): validate order ownership`
+- `docs(database): update database schema documentation`
+- `test(order): add order service tests`
+- `refactor(profile): simplify profile service`
+
+Hindari push langsung ke `main`, `staging`, atau `ondev` untuk perubahan fitur. Gunakan Pull Request agar perubahan dapat ditinjau.
+
+---
+
+## 11. Testing
+
+Testing menggunakan Pest atau PHPUnit sesuai konfigurasi project.
+
+### Run All Tests
+
+```bash
 php artisan test
 ```
 
-Cakupan test minimum:
+### Run Specific Test
 
-**Authentication** - Registrasi Merchant dan Customer. - Validasi email
-unik. - Password tersimpan dalam bentuk hash. - Login berhasil dan
-gagal. - Refresh dan logout/revocation token.
-
-**Profile dan Authorization** - Satu user memiliki maksimal satu
-profile. - Profile dibuat sesuai role. - User tidak dapat mengakses
-profile milik user lain. - Role yang tidak sesuai ditolak.
-
-**Menu dan Catalog** - Merchant dapat membuat dan memperbarui menu
-miliknya. - Merchant tidak dapat mengubah menu Merchant lain. - Katalog
-hanya menampilkan data yang tersedia sesuai aturan.
-
-**Order dan Invoice** - Customer hanya dapat checkout untuk satu
-Merchant. - Semua menu pada order berasal dari Merchant yang sama. -
-Harga dan total dihitung ulang di backend. - Snapshot harga tersimpan
-pada order items. - Kegagalan proses menyebabkan rollback. - Invoice
-hanya dapat diakses pihak terkait.
-
-## 14. Security Checklist
-
--   [ ] Password menggunakan Laravel Hash.
--   [ ] Secret dan credential disimpan pada environment.
--   [ ] `.env` tidak di-commit.
--   [ ] Endpoint privat dilindungi autentikasi.
--   [ ] Role middleware diterapkan pada endpoint yang sesuai.
--   [ ] Policy memeriksa kepemilikan resource.
--   [ ] Validasi request menggunakan Form Request.
--   [ ] Upload file memvalidasi MIME type dan ukuran.
--   [ ] Token memiliki expiry dan mekanisme refresh/revocation.
--   [ ] HTTPS digunakan di production.
--   [ ] Refresh token tidak disimpan di `localStorage`.
--   [ ] Checkout menggunakan database transaction.
--   [ ] Total transaksi dihitung ulang di backend.
--   [ ] Error production tidak membocorkan stack trace atau secret.
-
-## 15. Git Branching Workflow
-
-Hierarki branch:
-
-``` text
-main
-  └── staging
-        └── ondev
-              └── onfeature/<nama-fitur>
+```bash
+php artisan test --filter=AuthenticationTest
 ```
 
-  Branch          Fungsi
-  --------------- -------------------------------------
-  `main`          Production / versi stabil
-  `staging`       Kandidat release dan UAT
-  `ondev`         Integrasi development
-  `onfeature/*`   Fitur spesifik, dibuat dari `ondev`
+### Testing Scope
 
-Alur Pull Request: 1. `onfeature/*` → `ondev` 2. `ondev` → `staging` 3.
-`staging` → `main`
+- Authentication dan validasi kredensial.
+- Role-based authorization.
+- Profile ownership.
+- Category CRUD.
+- Menu ownership dan availability.
+- Order creation dan perhitungan total.
+- Order status transitions.
+- Invoice generation.
+- Database relationships dan constraints.
 
-Hindari commit langsung ke branch utama. Gunakan Pull Request, review,
-dan test sebelum merge.
+Gunakan database testing terpisah dari database development. Jangan menjalankan test yang melakukan reset database pada database yang berisi data penting.
 
-Contoh nama branch: - `onfeature/auth-jwt` - `onfeature/user-profile` -
-`onfeature/merchant-menu` - `onfeature/order-checkout` -
-`onfeature/invoice-generation`
+---
 
-Contoh membuat feature branch:
+## 12. Security Guidelines
 
-``` bash
-git checkout ondev
-git pull origin ondev
-git checkout -b onfeature/auth-jwt
+1. Simpan password menggunakan hashing Laravel.
+2. Jangan mengembalikan password atau secret pada API response.
+3. Gunakan JWT dengan masa berlaku yang sesuai.
+4. Simpan secret dan credential pada environment variable.
+5. Jangan commit file `.env`.
+6. Validasi seluruh input menggunakan Form Request atau mekanisme validasi yang konsisten.
+7. Terapkan authorization berdasarkan role dan kepemilikan resource.
+8. Jangan menganggap UUID sebagai pengganti authorization.
+9. Gunakan Eloquent binding dan hindari raw SQL yang tidak aman.
+10. Gunakan database transaction untuk operasi multi-tabel yang harus atomik.
+11. Batasi akses CORS sesuai kebutuhan aplikasi.
+12. Gunakan HTTPS pada deployment.
+13. Jangan menampilkan detail exception internal pada production.
+14. Pastikan log tidak menyimpan password, token, atau informasi rahasia.
 
-git add .
-git commit -m "feat(auth): implement JWT authentication"
-git push -u origin onfeature/auth-jwt
-```
+---
 
-## 16. Tahapan Implementasi Backend
+## 13. Development Roadmap
 
-  Tahap   Pekerjaan                              Output
-  ------- -------------------------------------- -----------------------------
-  1       Inisialisasi Laravel dan environment   Backend dapat dijalankan
-  2       Migration, model, relasi, seeder       Fondasi database
-  3       JWT dan role authorization             Authentication API
-  4       Profile                                Profile API
-  5       Kategori dan menu                      Catalog/Merchant API
-  6       Marketplace query                      Catalog API
-  7       Order dan order items                  Checkout API
-  8       Invoice                                Invoice API
-  9       Testing dan security review            Backend siap diintegrasikan
+Pengembangan dilakukan secara bertahap melalui feature branch.
 
-## 17. Keputusan Terbuka
+| Phase | Feature | Scope |
+|---|---|---|
+| 1 | Setup Database | Laravel setup, PostgreSQL, UUID migrations, models, factories, seeders |
+| 2 | Authentication | Register, login, JWT, logout, refresh |
+| 3 | User & Profile | Profile management dan role authorization |
+| 4 | Category Management | Category CRUD |
+| 5 | Menu Management | Merchant menu CRUD |
+| 6 | Marketplace Catalog | Public catalog, search, dan filter |
+| 7 | Order Management | Checkout, order items, dan status |
+| 8 | Invoice Management | Invoice generation dan status |
+| 9 | Integration & Hardening | Integrasi modul, security review, dan regression testing |
 
-  -----------------------------------------------------------------------
-  Topik                               Status
-  ----------------------------------- -----------------------------------
-  Versi Laravel/PHP                   Pilih versi stabil dan cocok dengan
-                                      environment
+Setiap phase dikembangkan dalam branch `onfeature/<feature-name>`, kemudian melalui `ondev`, `staging`, dan `main`.
 
-  JWT package                         `tymon/jwt-auth` masih usulan;
-                                      verifikasi dukungan refresh/revoke
+---
 
-  Kategori                            Konfirmasi kategori Merchant dan
-                                      menu
+## License
 
-  Pembayaran                          Di luar scope awal
-
-  Pembatalan order                    Aturan transisi perlu ditetapkan
-
-  Ongkir/pajak/diskon                 Belum ditentukan
-
-  Admin dan deployment                Ditentukan kemudian
-  -----------------------------------------------------------------------
-
-## 18. Definition of Done --- Fondasi Backend
-
--   [ ] Laravel REST API dapat dijalankan.
--   [ ] Koneksi PostgreSQL berhasil.
--   [ ] Migration dapat dijalankan dari database kosong.
--   [ ] Tabel `users` dan `profiles` menerapkan relasi one-to-one.
--   [ ] Registrasi Merchant dan Customer membuat satu profile sesuai
-    role.
--   [ ] Model dan relasi Eloquent tervalidasi.
--   [ ] Login menghasilkan JWT yang valid.
--   [ ] Endpoint privat terlindungi.
--   [ ] Role dan ownership authorization berfungsi.
--   [ ] CRUD kategori/menu berjalan sesuai hak akses.
--   [ ] Checkout menghitung total di backend dan menggunakan
-    transaction.
--   [ ] Invoice terhubung dengan order.
--   [ ] Test utama berjalan.
--   [ ] `.env.example` tersedia tanpa secret.
--   [ ] Dokumentasi backend diperbarui.
-
-------------------------------------------------------------------------
-
-**Dokumen baseline backend v0.3.** Desain identitas/profil tetap
-menggunakan dua tabel (`users` dan `profiles`) sesuai keputusan v0.2.
-README ini membatasi dokumentasi pada backend Laravel dan mempertahankan
-scope bisnis awal.
+License belum ditentukan.
