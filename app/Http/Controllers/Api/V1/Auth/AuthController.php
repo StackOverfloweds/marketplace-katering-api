@@ -214,4 +214,33 @@ class AuthController extends Controller
             'user_agent' => $request->userAgent(),
         ];
     }
+
+    /**
+     * Refresh the current authentication tokens.
+     *
+     * Validates the refresh token and returns a new access token
+     * together with a rotated refresh token.
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function refresh(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'refresh_token' => [
+                'required',
+                'string',
+            ],
+        ]);
+
+        $result = $this->authentication->refresh(
+            $validated['refresh_token']
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Token berhasil diperbarui.',
+            'data' => $result,
+        ]);
+    }
 }

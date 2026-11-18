@@ -142,6 +142,7 @@ class OrderService
         return 'ORD-' . now()->format('Ymd') . '-' . Str::upper(Str::random(8));
     }
 
+    
     /**
      * Get orders belonging to the authenticated user.
      *
@@ -151,24 +152,28 @@ class OrderService
      */
     public function getOrders(User $user, int $perPage = 15)
     {
-        $profileId = $user->profile->id;
+        $profile = $user->profile;
+
+        if (!$profile) {
+            throw ValidationException::withMessages([
+                'profile' => 'Profil pengguna tidak ditemukan.',
+            ]);
+        }
 
         $query = Order::query()
-        ->with([
-            'customerProfile',
-            'merchantProfile',
-            'orderItems',
-        ])
-        ->latest('created_at');
+            ->with([
+                'customerProfile',
+                'merchantProfile',
+                'orderItems',
+                'invoice',
+            ])
+            ->latest('created_at');
 
-        if ($user->role == 'customer')
-        {
-            $query->where('customer_profile_id', $profileId);
-        } elseif ($user->role == 'merchant') 
-        {
-            $query->where('merchant_profile_id'. $profileId);
-        } else 
-        {
+        if ($user->role === 'customer') {
+            $query->where('customer_profile_id', $profile->id);
+        } elseif ($user->role === 'merchant') {
+            $query->where('merchant_profile_id', $profile->id);
+        } else {
             throw ValidationException::withMessages([
                 'role' => 'Role tidak memiliki akses ke pesanan.',
             ]);
@@ -177,21 +182,26 @@ class OrderService
         return $query->paginate($perPage);
     }
 
+
+    
     /**
      * Get order details.
      *
      * @param Order $order
      * @return Order
      */
-    public function getOrderDetail(Order $order) :Order 
+    public function getOrderDetail(Order $order): Order
     {
         return $order->load([
             'customerProfile',
             'merchantProfile',
-            'OrderItems',
+            'orderItems',
+            'invoice',
         ]);
     }
 
+
+    
     /**
      * Cancel a pending order.
      *
@@ -200,30 +210,32 @@ class OrderService
      *
      * @throws ValidationException
      */
-    public function cancelOrder (Order $order) : Order
+    public function cancelOrder(Order $order): Order
     {
-        return DB::transaction(function() use ($order) {
+        return DB::transaction(function () use ($order) {
             $lockedOrder = Order::query()
-            ->lockForUpdate()
-            ->findOrFail($order->id);
-        });
+                ->lockForUpdate()
+                ->findOrFail($order->id);
 
-        if ($lockedOrder->status !== 'pending') {
-            throw ValidationExeception::withMessages ([
-                'status' => 'Pesanan hanya dapat dibatalkan ketika masih pending.',
+            if ($lockedOrder->status !== 'pending') {
+                throw ValidationException::withMessages([
+                    'status' => 'Pesanan hanya dapat dibatalkan ketika masih pending.',
+                ]);
+            }
+
+            $lockedOrder->update([
+                'status' => 'cancelled',
             ]);
-        }
 
-        $lockedOrder->update([
-            'status' => 'cancelled',
-        ]);
-
-        return $lockedOrder->load([
-            'customerProfile',
-            'merchantProfile',
-            'OrderItems',
-        ]);
+            return $lockedOrder->load([
+                'customerProfile',
+                'merchantProfile',
+                'orderItems',
+                'invoice',
+            ]);
+        });
     }
+
 
     /**
      * Update order status by merchant.

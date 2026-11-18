@@ -5,11 +5,19 @@ use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\Category\CategoryController;
 use App\Http\Controllers\Api\V1\Invoice\InvoiceController;
 use App\Http\Controllers\Api\V1\Menu\MenuController;
+use App\Http\Controllers\Api\V1\Merchant\MerchantController;
 use App\Http\Controllers\Api\V1\Order\OrderController;
 use App\Http\Controllers\Api\V1\Profile\ProfileController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
+
+        // Merchant Routes
+        Route::get('/merchants', [MerchantController::class, 'index']);
+
+        Route::get('/merchants/search', [MerchantController::class, 'search']);
+
+        Route::get('/merchants/{merchant}', [MerchantController::class, 'show']);
 
         /*
         |--------------------------------------------------------------------------
@@ -23,7 +31,12 @@ Route::prefix('v1')->group(function () {
                 Route::post('/register', [AuthController::class, 'register']);
                 Route::post('/login', [AuthController::class, 'login']);
             });
-
+        
+            // Refresh token tidak memerlukan access token JWT.
+            Route::middleware('throttle:10,1')->group(function () {
+                Route::post('/refresh', [AuthController::class, 'refresh']);
+            });
+        
             Route::middleware(['auth:api', 'active.session'])->group(function () {
                 Route::get('/me', [AuthController::class, 'me']);
                 Route::post('/logout', [AuthController::class, 'logout']);
@@ -45,19 +58,7 @@ Route::prefix('v1')->group(function () {
                 Route::patch('/', 'update');
             });
 
-        /*
-        |--------------------------------------------------------------------------
-        | Public Menu Routes
-        |--------------------------------------------------------------------------
-        */
-
-        Route::prefix('menus')
-            ->controller(MenuController::class)
-            ->group(function () {
-                Route::get('/', 'index');
-                Route::get('/{menu}', 'show');
-            });
-
+       
         /*
         |--------------------------------------------------------------------------
         | Merchant Menu Management
@@ -65,14 +66,32 @@ Route::prefix('v1')->group(function () {
         */
 
         Route::prefix('menus')
-            ->middleware(['auth:api', 'active.session'])
-            ->controller(MenuController::class)
-            ->group(function () {
-                Route::post('/', 'store');
-                Route::put('/{menu}', 'update');
-                Route::patch('/{menu}', 'update');
-                Route::delete('/{menu}', 'destroy');
-            });
+        ->middleware(['auth:api', 'active.session'])
+        ->controller(MenuController::class)
+        ->group(function () {
+            // Static route harus sebelum dynamic route.
+            Route::get('/my', 'myMenus');
+
+            Route::post('/', 'store');
+
+            Route::put('/{menu}', 'update');
+            Route::patch('/{menu}', 'update');
+            Route::delete('/{menu}', 'destroy');
+        });
+
+        /*
+        |--------------------------------------------------------------------------
+        | Public Menu Routes
+        |--------------------------------------------------------------------------
+        */
+
+        Route::prefix('menus')
+        ->controller(MenuController::class)
+        ->group(function () {
+            Route::get('/', 'index');
+            Route::get('/{menu}', 'show');
+        });
+
 
     
             /*

@@ -185,4 +185,94 @@ class AuthSessionService
 
         Redis::del($this->userSessionsKey($userId));
     }
+
+    /**
+     * Rotate an existing refresh token.
+     *
+     * Validates the current Redis session and replaces the old
+     * refresh token with a new token atomically.
+     *
+     * @param string $refreshToken Current plaintext refresh token
+     * @return array|null New refresh token and session information
+     */
+    public function rotateRefreshToken(string $refreshToken): ?array
+    {
+        $oldHash = hash('sha256', $refreshToken);
+        $oldRefreshKey = $this->refreshKey($oldHash);
+
+        $sessionId = Redis::get($oldRefreshKey);
+
+        if (!$sessionId) {
+            return null;
+        }
+
+        $sessionKey = $this->sessionKey($sessionId);
+        $session = $this->getSession($sessionId);
+
+        if (!$session) {
+            return null;
+        }
+
+        $newRefreshToken = Str::random(96);
+        $newHash = hash('sha256', $newRefreshToken);
+        $newRefreshKey = $this->refreshKey($newHash);
+
+        $script = <<<'LUA'
+            local mappedSession = redis.call('GET', KEYS[1])
+
+            if mappedSession ~= ARGV[1] then
+                return 0
+            end
+
+            local sessionData = redis.call('GET', KEYS[2])
+
+            if not sessionData then
+                return 0
+            end
+
+            local session = cjson.decode(sessionData)
+
+            if session.refresh_hash ~= ARGV[2] then
+                return 0
+            end
+
+            local ttl = redis.call('TTL', KEYS[2])
+
+            if ttl <= 0 then
+                return 0
+            end
+
+            session.refresh_hash = ARGV[3]
+            session.last_activity_at = ARGV[4]
+
+            redis.call('SETEX', KEYS[2], ttl, cjson.encode(session))
+            redis.call('SETEX', KEYS[3], ttl, ARGV[1])
+            redis.call('DEL', KEYS[1])
+
+            return ttl
+        LUA;
+
+        $ttl = Redis::eval(
+            $script,
+            3,
+            $oldRefreshKey,
+            $sessionKey,
+            $newRefreshKey,
+            $sessionId,
+            $oldHash,
+            $newHash,
+            now()->toIso8601String()
+        );
+
+        if (!$ttl || $ttl <= 0) {
+            return null;
+        }
+
+        return [
+            'session_id' => $sessionId,
+            'user_id' => $session['user_id'],
+            'refresh_token' => $newRefreshToken,
+            'expires_in' => (int) $ttl,
+        ];
+    }
 }

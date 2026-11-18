@@ -9,6 +9,7 @@ use App\Models\Menu;
 use App\Services\Menu\MenuService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class MenuController extends Controller
 {
@@ -37,10 +38,18 @@ class MenuController extends Controller
             ])
         );
 
+        $data = collect($menus->items())->map(function ($menu) {
+            $menu->photo_url = $menu->photo
+                ? Storage::url($menu->photo)
+                : null;
+
+            return $menu;
+        });
+
         return response()->json([
             'success' => true,
             'message' => 'Daftar menu berhasil diambil.',
-            'data' => $menus->items(),
+            'data' => $data,
             'meta' => [
                 'current_page' => $menus->currentPage(),
                 'per_page' => $menus->perPage(),
@@ -60,12 +69,17 @@ class MenuController extends Controller
     {
         $result = $this->menuService->getMenu($menu);
 
+        $result->photo_url = $result->photo
+            ? asset('storage/' . $result->photo)
+            : null;
+
         return response()->json([
             'success' => true,
             'message' => 'Detail menu berhasil diambil.',
             'data' => $result,
         ], 200);
     }
+
 
     /**
      * Store a newly created menu.
@@ -138,4 +152,53 @@ class MenuController extends Controller
             'data' => null,
         ], 200);
     }
+
+
+    /**
+     * Display menus belonging to the authenticated merchant.
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function myMenus(Request $request): JsonResponse
+    {
+        $profile = $request->user('api')->profile;
+
+        abort_if(
+            $profile === null,
+            403,
+            'Profil merchant tidak ditemukan.'
+        );
+
+        $menus = $this->menuService->getMerchantMenus(
+            $profile,
+            $request->only([
+                'category_id',
+                'search',
+                'is_available',
+                'per_page',
+            ])
+        );
+
+        $data = collect($menus->items())->map(function ($menu) {
+            $menu->photo_url = $menu->photo
+                ? Storage::url($menu->photo)
+                : null;
+
+            return $menu;
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Daftar menu merchant berhasil diambil.',
+            'data' => $data,
+            'meta' => [
+                'current_page' => $menus->currentPage(),
+                'per_page' => $menus->perPage(),
+                'total' => $menus->total(),
+                'last_page' => $menus->lastPage(),
+            ],
+        ], 200);
+    }
+
 }
