@@ -152,4 +152,53 @@ class MenuController extends Controller
             'data' => null,
         ], 200);
     }
+
+
+    /**
+     * Display menus belonging to the authenticated merchant.
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function myMenus(Request $request): JsonResponse
+    {
+        $profile = $request->user('api')->profile;
+
+        abort_if(
+            $profile === null,
+            403,
+            'Profil merchant tidak ditemukan.'
+        );
+
+        $menus = $this->menuService->getMerchantMenus(
+            $profile,
+            $request->only([
+                'category_id',
+                'search',
+                'is_available',
+                'per_page',
+            ])
+        );
+
+        $data = collect($menus->items())->map(function ($menu) {
+            $menu->photo_url = $menu->photo
+                ? Storage::url($menu->photo)
+                : null;
+
+            return $menu;
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Daftar menu merchant berhasil diambil.',
+            'data' => $data,
+            'meta' => [
+                'current_page' => $menus->currentPage(),
+                'per_page' => $menus->perPage(),
+                'total' => $menus->total(),
+                'last_page' => $menus->lastPage(),
+            ],
+        ], 200);
+    }
+
 }
