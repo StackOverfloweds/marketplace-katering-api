@@ -19,9 +19,8 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [ 
-    'http://localhost:5174',
-    'http://127.0.0.1:5174',],
+    'allowed_origins' => array_filter(
+    explode(',', env('CORS_ALLOWED_ORIGINS', 'http://localhost:5174'))),
 
     'allowed_origins_patterns' => [],
 
