@@ -234,4 +234,43 @@ class MenuService
 
         return $deleted;
     }
+
+
+    /**
+     * Get menus belonging to the authenticated merchant with pagination.
+     *
+     * @param Profile $profile
+     * @param array $filters
+     * @return LengthAwarePaginator
+     */
+    public function getMerchantMenus(
+        Profile $profile,
+        array $filters = []
+    ): LengthAwarePaginator {
+        return Menu::query()
+            ->with('category:id,name,slug')
+            ->where('merchant_profile_id', $profile->id)
+            ->when(
+                $filters['category_id'] ?? null,
+                fn (Builder $query, string $categoryId) =>
+                    $query->where('category_id', $categoryId)
+            )
+            ->when(
+                $filters['search'] ?? null,
+                fn (Builder $query, string $search) =>
+                    $query->where('name', 'ilike', "%{$search}%")
+            )
+            ->when(
+                isset($filters['is_available'])
+                    && $filters['is_available'] !== '',
+                fn (Builder $query) =>
+                    $query->where(
+                        'is_available',
+                        filter_var($filters['is_available'], FILTER_VALIDATE_BOOLEAN)
+                    )
+            )
+            ->latest()
+            ->paginate($filters['per_page'] ?? 15);
+    }
+
 }

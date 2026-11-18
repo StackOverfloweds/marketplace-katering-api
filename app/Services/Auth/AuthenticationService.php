@@ -132,4 +132,57 @@ class AuthenticationService
             'session_id' => $session['session_id'],
         ];
     }
+
+    /**
+     * Refresh authentication tokens using a valid refresh token.
+     *
+     * Rotates the refresh token and generates a new JWT access token
+     * without creating a new authentication session.
+     *
+     * @param string $refreshToken Current refresh token
+     * @return array New authentication tokens and user information
+     *
+     * @throws ValidationException When refresh token or account is invalid
+     */
+    public function refresh(string $refreshToken): array
+    {
+        $session = $this->sessions->rotateRefreshToken($refreshToken);
+
+        if (!$session) {
+            throw ValidationException::withMessages([
+                'refresh_token' => ['Refresh token tidak valid atau session telah berakhir.'],
+            ]);
+        }
+
+        $user = User::with('profile')->find($session['user_id']);
+
+        if (!$user || !$user->is_active) {
+            $this->sessions->revoke($session['session_id']);
+
+            throw ValidationException::withMessages([
+                'refresh_token' => ['Akun tidak ditemukan atau telah dinonaktifkan.'],
+            ]);
+        }
+
+        JWTAuth::factory()->setTTL(
+            (int) config('authentication.access_token_ttl', 15)
+        );
+
+        $accessToken = JWTAuth::claims([
+            'sid' => $session['session_id'],
+            'role' => $user->role,
+        ])->fromUser($user);
+
+        return [
+            'user' => $user,
+            'access_token' => $accessToken,
+            'refresh_token' => $session['refresh_token'],
+            'token_type' => 'Bearer',
+            'expires_in' => (int) config(
+                'authentication.access_token_ttl',
+                15
+            ) * 60,
+            'session_id' => $session['session_id'],
+        ];
+    }
 }
