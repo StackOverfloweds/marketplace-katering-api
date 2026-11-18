@@ -862,9 +862,3 @@ Pengembangan dilakukan secara bertahap melalui feature branch.
 | 9 | Integration & Hardening | Integrasi modul, security review, dan regression testing |
 
 Setiap phase dikembangkan dalam branch `onfeature/<feature-name>`, kemudian melalui `ondev`, `staging`, dan `main`.
-
----
-
-## License
-
-License belum ditentukan.
